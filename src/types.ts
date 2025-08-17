@@ -9,12 +9,18 @@ export interface ParsedShard {
   type: 'regular' | 'related' | 'parent' | 'child';
   value: string;
   cleanName?: string;
+  label?: string;
+}
+
+export interface RelationEntry {
+  file: TFile;
+  label?: string;
 }
 
 export interface FileRelations {
-  related: TFile[];
-  parents: TFile[];
-  children: TFile[];
+  related: RelationEntry[];
+  parents: RelationEntry[];
+  children: RelationEntry[];
 }
 
 export interface RelationMaps {

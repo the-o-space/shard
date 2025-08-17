@@ -1,6 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, TFile, Notice } from 'obsidian';
-import { ShardFileView, VIEW_TYPE_SHARD_FILE } from './src/shardFileView';
-import { RelationsManager } from './src/relationsManager';
+import { ShardView, VIEW_TYPE_SHARD_FILE } from './src/views/ShardView';
+import { RelationsManager } from './src/model/RelationsManager';
 
 interface ShardPluginSettings {
 	replaceFileExplorer: boolean;
@@ -13,72 +13,20 @@ const DEFAULT_SETTINGS: ShardPluginSettings = {
 export default class ShardPlugin extends Plugin {
 	settings: ShardPluginSettings;
 	relationsManager: RelationsManager;
-	private isUpdatingRelations = false;
 
 	async onload() {
 		await this.loadSettings();
 
-		// Initialize relations manager
 		this.relationsManager = new RelationsManager(this.app.vault);
 
-		// Register view with relations manager
-		this.registerView(VIEW_TYPE_SHARD_FILE, (leaf) => new ShardFileView(leaf, this.relationsManager));
+		this.registerView(VIEW_TYPE_SHARD_FILE, (leaf) => new ShardView(leaf, this.relationsManager));
 
 		this.app.workspace.onLayoutReady(async () => {
-			// Build initial relations cache
 			await this.relationsManager.rebuildRelationsCache();
-
 			if (this.settings.replaceFileExplorer) {
 				this.replaceFileExplorer();
 			}
 		});
-
-		// Update relations when files are modified
-		this.registerEvent(
-			this.app.vault.on('modify', async (file) => {
-				// Avoid infinite loops when we're updating relations
-				if (this.isUpdatingRelations) return;
-				
-				if (file instanceof TFile && file.extension === 'md') {
-					this.isUpdatingRelations = true;
-					try {
-						await this.relationsManager.updateFileRelations(file);
-					} finally {
-						this.isUpdatingRelations = false;
-					}
-				}
-			})
-		);
-
-		// Update relations when files are created
-		this.registerEvent(
-			this.app.vault.on('create', async (file) => {
-				if (file instanceof TFile && file.extension === 'md') {
-					// Wait a bit for the file to be ready
-					setTimeout(async () => {
-						await this.relationsManager.updateFileRelations(file);
-					}, 100);
-				}
-			})
-		);
-
-		// Update relations when files are renamed
-		this.registerEvent(
-			this.app.vault.on('rename', async (file, oldPath) => {
-				if (file instanceof TFile && file.extension === 'md') {
-					await this.relationsManager.rebuildRelationsCache();
-				}
-			})
-		);
-
-		// Update relations when files are deleted
-		this.registerEvent(
-			this.app.vault.on('delete', async (file) => {
-				if (file instanceof TFile && file.extension === 'md') {
-					await this.relationsManager.rebuildRelationsCache();
-				}
-			})
-		);
 
 		this.addCommand({
 			id: 'open-shard-view',
@@ -89,35 +37,32 @@ export default class ShardPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'sync-all-relations',
-			name: 'Sync All Symmetric Relations',
-			callback: async () => {
-				new Notice('Syncing all symmetric relations...');
-				await this.syncAllRelations();
-				new Notice('Symmetric relations synced!');
+			id: 'delete-current-file',
+			name: 'Delete current file',
+			hotkeys: [
+				{ modifiers: ['Mod'], key: 'Delete' }
+			],
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				if (!file) return false;
+				if (!checking) this.safeDelete(file);
+				return true;
 			}
 		});
 
 		this.addSettingTab(new ShardSettingTab(this.app, this));
 	}
 
-	async syncAllRelations() {
-		this.isUpdatingRelations = true;
-		try {
-			const files = this.app.vault.getMarkdownFiles();
-			for (const file of files) {
-				await this.relationsManager.updateFileRelations(file);
-			}
-		} finally {
-			this.isUpdatingRelations = false;
-		}
+	async safeDelete(file: TFile) {
+		await this.relationsManager.cleanupDeletedFileRelations(file);
+		await this.app.vault.delete(file);
+		new Notice(`Deleted: ${file.basename}`);
 	}
 
 	replaceFileExplorer() {
 		const explorerLeaves = this.app.workspace.getLeavesOfType('file-explorer');
 		explorerLeaves.forEach((leaf) => leaf.detach());
 		const leftLeaf = this.app.workspace.getLeftLeaf(false);
-		
 		if (leftLeaf) {
 			leftLeaf.setViewState({ type: VIEW_TYPE_SHARD_FILE });
 			this.app.workspace.revealLeaf(leftLeaf);
