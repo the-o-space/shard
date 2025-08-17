@@ -12,19 +12,12 @@ export interface ParsedShard {
   label?: string;
 }
 
-export interface RelationEntry {
-  file: TFile;
-  label?: string;
-}
-
-export interface FileRelations {
-  related: RelationEntry[];
-  parents: RelationEntry[];
-  children: RelationEntry[];
-}
-
-export interface RelationMaps {
-  related: Map<string, TFile[]>;
-  parents: Map<string, TFile[]>;
-  children: Map<string, TFile[]>;
+export interface CustomSection {
+  name: string;
+  /**
+   * Query string using shard paths combined with logical operators.
+   * Use "||" to express OR (any shard matches) and "&" to express AND (all shards match).
+   * Lines are trimmed before evaluation. Example: "Resource || Software/Open Source".
+   */
+  query: string;
 } 

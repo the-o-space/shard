@@ -1,22 +1,47 @@
-import { ItemView, WorkspaceLeaf, TFile, Menu } from 'obsidian';
-import { ShardParser } from '../model/ShardParser';
+import { ItemView, WorkspaceLeaf, TFile } from 'obsidian';
 import { RelationsManager } from '../model/RelationsManager';
-import { buildShardTree } from '../ui/Tree';
+import { ViewStateManager } from '../model/ViewStateManager';
 import { buildRelationsPanel } from '../ui/Relations';
+import { CustomSection } from '../types';
+import { TreeBuilder } from '../services/TreeBuilder';
+import { TreeRenderer } from '../services/TreeRenderer';
+import { ContextMenuManager } from '../services/ContextMenuManager';
+import { SectionRenderer } from '../services/SectionRenderer';
 
 export const VIEW_TYPE_SHARD_FILE = 'shard-file-view';
 
 export class ShardView extends ItemView {
-  private parser: ShardParser;
   private relationsManager: RelationsManager;
+  private viewStateManager: ViewStateManager;
+  private treeBuilder: TreeBuilder;
+  private treeRenderer: TreeRenderer;
+  private contextMenuManager: ContextMenuManager;
+  private sectionRenderer: SectionRenderer;
   private treeContainer: HTMLElement | null = null;
   private relationsContainer: HTMLElement | null = null;
   private currentFile: TFile | null = null;
+  private customSections: CustomSection[];
 
-  constructor(leaf: WorkspaceLeaf, relationsManager: RelationsManager) {
+  constructor(
+    leaf: WorkspaceLeaf,
+    relationsManager: RelationsManager,
+    viewStateManager: ViewStateManager,
+    customSections: CustomSection[] = []
+  ) {
     super(leaf);
-    this.parser = new ShardParser();
     this.relationsManager = relationsManager;
+    this.viewStateManager = viewStateManager;
+    this.customSections = customSections;
+    
+    this.treeBuilder = new TreeBuilder(this.app.vault);
+    this.contextMenuManager = new ContextMenuManager(this.app);
+    this.treeRenderer = new TreeRenderer(
+      this.app,
+      viewStateManager,
+      (evt, path) => this.contextMenuManager.showCategoryContextMenu(evt, path),
+      (evt, file) => this.contextMenuManager.showFileContextMenu(evt, file)
+    );
+    this.sectionRenderer = new SectionRenderer(viewStateManager);
   }
 
   getViewType() {
@@ -36,220 +61,108 @@ export class ShardView extends ItemView {
     container.empty();
     container.addClass('shard-view-container');
 
-    // Top section: Shard Tree
     this.treeContainer = container.createDiv({ cls: 'shard-tree-section' });
     this.treeContainer.createEl('h4', { text: 'Shard Tree', cls: 'shard-section-header' });
+    this.sectionRenderer.setContainer(this.treeContainer);
 
-    // Bottom section: Relations
     this.relationsContainer = container.createDiv({ cls: 'shard-relations-section' });
     this.relationsContainer.createEl('h4', { text: 'Relations', cls: 'shard-section-header' });
 
     await this.renderAll();
 
-    // Listen for active file changes
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', async () => {
-        await this.renderAll();
+        this.currentFile = this.app.workspace.getActiveFile();
+        this.treeRenderer.highlightActiveFileInTree(this.treeContainer!, this.currentFile);
+        await this.renderRelations();
       })
     );
 
-    // Listen for file saves (near-live update)
     this.registerEvent(
       this.app.vault.on('modify', async (file) => {
         if (file instanceof TFile) {
           await this.relationsManager.updateFileRelations(file);
-          await this.renderAll();
+          await this.updateTreeAndRelations();
         }
       })
     );
 
-    // Listen for file creations
     this.registerEvent(
       this.app.vault.on('create', async (file) => {
         if (file instanceof TFile) {
-          await this.renderAll();
+          await this.updateTreeAndRelations();
         }
       })
     );
 
-    // Listen for file deletions/renames
     this.registerEvent(
-      this.app.vault.on('delete', async () => await this.renderAll())
+      this.app.vault.on('delete', async () => await this.updateTreeAndRelations())
     );
     this.registerEvent(
-      this.app.vault.on('rename', async () => await this.renderAll())
+      this.app.vault.on('rename', async () => await this.updateTreeAndRelations())
     );
   }
 
   async renderAll() {
     this.currentFile = this.app.workspace.getActiveFile();
     await this.renderShardTree();
+    this.treeRenderer.highlightActiveFileInTree(this.treeContainer!, this.currentFile);
+    await this.renderRelations();
+  }
+
+  private async updateTreeAndRelations() {
+    await this.renderShardTree();
+    this.treeRenderer.highlightActiveFileInTree(this.treeContainer!, this.currentFile);
     await this.renderRelations();
   }
 
   async renderShardTree() {
     if (!this.treeContainer) return;
 
-    // --- Preserve current collapsed state before rerendering ---
-    const collapsedPaths = new Set<string>();
-    // Collect all folder items that are currently collapsed and remember their data-path
-    this.treeContainer.querySelectorAll('.tree-item.nav-folder.is-collapsed').forEach(el => {
-      const titleDiv = el.querySelector<HTMLElement>('.tree-item-self.nav-folder-title');
-      const path = titleDiv?.getAttribute('data-path');
-      if (path) collapsedPaths.add(path);
+    this.sectionRenderer.preserveCollapsedState(this.treeContainer);
+    
+    this.sectionRenderer.clearContainer();
+
+    await this.sectionRenderer.renderSection('All Shards', async () => {
+      const shardTree = await this.treeBuilder.buildAllShardsTree();
+      return this.treeRenderer.renderTreeSection(shardTree, this.currentFile);
     });
 
-    // Clear the existing tree contents
-    this.treeContainer.empty();
+    await this.sectionRenderer.renderSection('Unsharded', async () => {
+      const files = await this.treeBuilder.getUnshardedFiles();
+      return this.treeRenderer.renderFileList(files, this.currentFile, 'No unsharded notes');
+    });
 
-    const files = this.app.vault.getMarkdownFiles();
-    const shardTree: Record<string, any> = {};
-    const filesInTree = new Set<string>();
-    for (const file of files) {
-      const content = await this.app.vault.cachedRead(file);
-      const shards = this.parser.parseShardsFromContent(content);
-      if (shards.length === 0) continue;
-      shards.forEach((shard: string) => {
-        const parsed = this.parser.parseShard(shard);
-        if (parsed.type === 'regular') {
-          const expandedShards = this.parser.expandMultiShard(parsed.value);
-          expandedShards.forEach((expShard: string) => {
-            const parts = expShard.split('/').filter((p: string) => p.length > 0);
-            if (parts.length === 0) return;
-            if (parts.length === 1) {
-              if (!shardTree[parts[0]]) shardTree[parts[0]] = {};
-              const node = shardTree[parts[0]];
-              if (!node.files) node.files = [];
-              node.files.push(file);
-              filesInTree.add(file.path);
-            } else {
-              let current = shardTree;
-              parts.forEach((part: string, index: number) => {
-                if (!current[part]) current[part] = {};
-                current = current[part];
-                if (index === parts.length - 1) {
-                  if (!current.files) current.files = [];
-                  current.files.push(file);
-                  filesInTree.add(file.path);
-                }
-              });
-            }
-          });
-        }
-      });
-    }
-    const tree = buildShardTree(
-      shardTree,
-      this.currentFile,
-      (evt, path) => this.showCategoryContextMenu(evt, path),
-      (evt, file) => this.showFileContextMenu(evt, file),
-      this.app
-    );
-    this.treeContainer.appendChild(tree);
-
-    // --- Restore previously collapsed state ---
-    if (collapsedPaths.size > 0) {
-      this.treeContainer.querySelectorAll<HTMLElement>('.tree-item.nav-folder').forEach(folderEl => {
-        const titleDiv = folderEl.querySelector<HTMLElement>('.tree-item-self.nav-folder-title');
-        const path = titleDiv?.getAttribute('data-path');
-        if (path && collapsedPaths.has(path)) {
-          folderEl.addClass('is-collapsed');
-          titleDiv?.querySelector('.collapse-icon')?.addClass('is-collapsed');
-        }
-      });
-    }
-    const uncategorized = files.filter(f => !filesInTree.has(f.path));
-    if (uncategorized.length > 0) {
-      const uncategorizedSection = tree.createDiv({ cls: 'uncategorized-section' });
-      uncategorizedSection.createEl('div', { text: 'Uncategorized', cls: 'uncategorized-header' });
-      uncategorized.forEach(file => {
-        const fileItem = uncategorizedSection.createDiv({ cls: 'tree-item nav-file' });
-        const fileTitle = fileItem.createDiv({
-          cls: 'tree-item-self nav-file-title tappable is-clickable' +
-            (this.currentFile && file.basename === this.currentFile.basename ? ' is-active has-focus shard-current-file' : ''),
+    for (const section of this.customSections) {
+      try {
+        await this.sectionRenderer.renderSection(section.name, async () => {
+          const secTree = await this.treeBuilder.buildTreeForSection(section);
+          return this.treeRenderer.renderTreeSection(secTree, this.currentFile);
         });
-        fileTitle.setAttribute('data-path', file.path);
-        fileTitle.setAttribute('draggable', 'true');
-        fileTitle.createDiv({ cls: 'tree-item-inner nav-file-title-content', text: file.basename });
-        fileTitle.addEventListener('contextmenu', (evt) => {
-          evt.preventDefault();
-          this.showFileContextMenu(evt, file);
-        });
-        fileTitle.addEventListener('mousedown', (evt) => {
-          if (evt.button !== 0) return;
-          evt.preventDefault();
-          evt.stopPropagation();
-          this.app.workspace.openLinkText(file.path, '');
-        });
-      });
+      } catch (e) {
+        console.error(`Error rendering section ${section.name}`, e);
+      }
     }
   }
 
   async renderRelations() {
     if (!this.relationsContainer) return;
     this.relationsContainer.empty();
+    
     if (!this.currentFile || this.currentFile.extension !== 'md') {
       this.relationsContainer.createEl('div', { cls: 'pane-empty', text: 'No markdown file open' });
       return;
     }
-    const relations = await this.relationsManager.getFileRelations(this.currentFile);
+    
+    const relations = this.relationsManager.getFileRelations(this.currentFile);
     const panel = buildRelationsPanel(
-      this.currentFile,
       relations,
       this.currentFile,
-      (evt, file) => this.showFileContextMenu(evt, file),
+      (file) => this.app.workspace.openLinkText(file.path, ''),
+      (evt, file) => this.contextMenuManager.showFileContextMenu(evt, file),
       this.app
     );
     this.relationsContainer.appendChild(panel);
-  }
-
-  showCategoryContextMenu(evt: MouseEvent, shardPath: string) {
-    const menu = new Menu();
-    menu.addItem((item) => {
-      item.setTitle('New note')
-        .setIcon('document')
-        .onClick(async () => {
-          await this.createNoteInCategory(shardPath);
-        });
-    });
-    menu.showAtPosition({ x: evt.pageX, y: evt.pageY });
-  }
-
-  showFileContextMenu(evt: MouseEvent, file: TFile) {
-    const menu = new Menu();
-    menu.addItem((item) => {
-      item.setTitle('Delete')
-        .setIcon('trash')
-        .onClick(async () => {
-          // Access the plugin's safeDelete method through the app
-          const plugin = (this.app as any).plugins.plugins['shard'];
-          if (plugin && plugin.safeDelete) {
-            await plugin.safeDelete(file);
-          }
-        });
-    });
-    menu.showAtPosition({ x: evt.pageX, y: evt.pageY });
-  }
-
-  async createNoteInCategory(shardPath: string) {
-    let base = 'Untitled';
-    let idx = 1;
-    let name = base;
-    const files = this.app.vault.getMarkdownFiles();
-    while (files.some(f => f.basename === name)) {
-      idx += 1;
-      name = `${base} ${idx}`;
-    }
-    const filePath = `${name}.md`;
-    const content = [
-      '',
-      '```shards',
-      shardPath,
-      '```',
-      ''
-    ].join('\n');
-    const file = await this.app.vault.create(filePath, content);
-    await this.app.workspace.openLinkText(file.path, '');
   }
 
   async onClose() {

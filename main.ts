@@ -1,25 +1,45 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { ShardView, VIEW_TYPE_SHARD_FILE } from './src/views/ShardView';
 import { RelationsManager } from './src/model/RelationsManager';
+import { ViewStateManager, ShardViewState } from './src/model/ViewStateManager';
+import { CustomSection } from './src/types';
 
 interface ShardPluginSettings {
 	replaceFileExplorer: boolean;
+	customSections: CustomSection[];
+	viewState?: ShardViewState;
 }
 
 const DEFAULT_SETTINGS: ShardPluginSettings = {
-	replaceFileExplorer: true
+	replaceFileExplorer: true,
+	customSections: []
 }
 
 export default class ShardPlugin extends Plugin {
 	settings: ShardPluginSettings;
 	relationsManager: RelationsManager;
+	viewStateManager: ViewStateManager;
 
 	async onload() {
 		await this.loadSettings();
 
 		this.relationsManager = new RelationsManager(this.app.vault);
+		
+		// Initialize ViewStateManager with persistent state
+		this.viewStateManager = new ViewStateManager(
+			this.settings.viewState,
+			async () => {
+				this.settings.viewState = this.viewStateManager.getState();
+				await this.saveSettings();
+			}
+		);
 
-		this.registerView(VIEW_TYPE_SHARD_FILE, (leaf) => new ShardView(leaf, this.relationsManager));
+		this.registerView(VIEW_TYPE_SHARD_FILE, (leaf) => new ShardView(
+			leaf,
+			this.relationsManager,
+			this.viewStateManager,
+			this.settings.customSections
+		));
 
 		this.app.workspace.onLayoutReady(async () => {
 			await this.relationsManager.rebuildRelationsCache();
@@ -118,5 +138,35 @@ class ShardSettingTab extends PluginSettingTab {
 					this.plugin.settings.replaceFileExplorer = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('Custom Sections')
+			.setDesc('Define your custom sections in JSON. Example:')
+			.setClass('custom-sections-setting')
+			.addTextArea(text => {
+				text.inputEl.style.width = '100%';
+				text.inputEl.style.height = '8em';
+				text.inputEl.style.fontFamily = 'var(--font-monospace)';
+				let draft = JSON.stringify(this.plugin.settings.customSections, null, 2);
+				text.setValue(draft);
+				text.onChange((value) => {
+					draft = value; // just cache, do not save yet
+				});
+			})
+			.addExtraButton(btn => {
+				btn.setIcon('save')
+				   .setTooltip('Save sections')
+				   .onClick(async () => {
+					   try {
+						   const parsed: CustomSection[] = JSON.parse((document.querySelector('.custom-sections-setting textarea') as HTMLTextAreaElement).value);
+						   this.plugin.settings.customSections = parsed;
+						   await this.plugin.saveSettings();
+						   new Notice('Custom sections saved');
+					   } catch (err) {
+						   new Notice('Invalid JSON – not saved');
+						   console.error('Invalid JSON for custom sections', err);
+					   }
+				   });
+			});
 	}
 }

@@ -21,10 +21,10 @@ export class ShardParser {
       let label: string | undefined;
       let rest = str.trim();
       if (rest.startsWith('"')) {
-        const match = rest.match(/^"([^"]+)"\s+(.*)$/);
+        const match = rest.match(/^"([^"]+)"(?:\s+(.*))?$/);
         if (match) {
           label = match[1];
-          rest = match[2].trim();
+          rest = (match[2] || '').trim();
         }
       }
       return { label, rest };
@@ -32,6 +32,13 @@ export class ShardParser {
 
     if (trimmed.startsWith('=')) {
       const { label, rest } = getLabelAndRest(trimmed.slice(1));
+      // Check if there's a valid target after label extraction
+      if (!rest || rest.trim().length === 0) {
+        return {
+          type: 'regular',
+          value: trimmed
+        };
+      }
       return {
         type: 'related',
         value: rest,
@@ -40,6 +47,13 @@ export class ShardParser {
       };
     } else if (trimmed.startsWith('>')) {
       const { label, rest } = getLabelAndRest(trimmed.slice(1));
+      // Check if there's a valid target after label extraction
+      if (!rest || rest.trim().length === 0) {
+        return {
+          type: 'regular',
+          value: trimmed
+        };
+      }
       return {
         type: 'child',
         value: rest,
@@ -48,6 +62,13 @@ export class ShardParser {
       };
     } else if (trimmed.startsWith('<')) {
       const { label, rest } = getLabelAndRest(trimmed.slice(1));
+      // Check if there's a valid target after label extraction
+      if (!rest || rest.trim().length === 0) {
+        return {
+          type: 'regular',
+          value: trimmed
+        };
+      }
       return {
         type: 'parent',
         value: rest,
