@@ -2,6 +2,7 @@ import { Plugin, TFile } from 'obsidian';
 import { Manager } from './Manager';
 import { Settings } from './data/types/Settings';
 import { ShardView, VIEW_TYPE } from './views/ShardView';
+import { rootStore, rootInitialState } from './state/rootStore';
 
 export default class ShardPlugin extends Plugin {
 	settings: Settings;
@@ -58,6 +59,10 @@ export default class ShardPlugin extends Plugin {
 
 	async setupSettings() {
 		this.settings = await this.loadData();
+		const saved = (await this.loadData()) as any;
+		if (saved && saved.ui) {
+			rootStore.dispatch({ type: 'ui/set', payload: saved.ui });
+		}
 	}
 
 	async activateShards() {
@@ -76,5 +81,9 @@ export default class ShardPlugin extends Plugin {
 	onunload() {
 		// Clean up the view
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE);
+		const data = (this.settings as any) ?? {};
+		const state = rootStore.getState();
+		(data as any).ui = state.ui;
+		this.saveData(data);
 	}
 }

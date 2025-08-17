@@ -6,10 +6,38 @@ export function buildShardTree(
   onCategoryContextMenu: (evt: MouseEvent, path: string) => void,
   onFileContextMenu: (evt: MouseEvent, file: TFile) => void,
   app: App,
+  options?: {
+    expandedPaths?: Set<string>;
+    initialScrollTop?: number;
+    onToggleExpand?: (path: string, expanded: boolean) => void;
+    onScroll?: (scrollTop: number) => void;
+  }
 ): HTMLElement {
   const root = document.createElement('div');
   root.className = 'tag-tree';
-  renderTree(tree, root, 0, [], currentFile, onCategoryContextMenu, onFileContextMenu, app);
+  const expandedSet = options?.expandedPaths ?? new Set<string>();
+  renderTree(
+    tree,
+    root,
+    0,
+    [],
+    currentFile,
+    onCategoryContextMenu,
+    onFileContextMenu,
+    app,
+    expandedSet,
+    options?.onToggleExpand
+  );
+
+  if (typeof options?.initialScrollTop === 'number') {
+    (root as HTMLElement).scrollTop = options.initialScrollTop;
+  }
+
+  if (options?.onScroll) {
+    root.addEventListener('scroll', () => {
+      options.onScroll!((root as HTMLElement).scrollTop);
+    });
+  }
   return root;
 }
 
@@ -22,12 +50,18 @@ function renderTree(
   onCategoryContextMenu: (evt: MouseEvent, path: string) => void,
   onFileContextMenu: (evt: MouseEvent, file: TFile) => void,
   app: App,
+  expandedSet: Set<string>,
+  onToggleExpand?: (path: string, expanded: boolean) => void
 ) {
   Object.keys(node).sort().forEach(key => {
     if (key === 'files') return;
     const currentPath = [...path, key];
     const currentPathString = currentPath.join('/');
     const treeItem = el.createDiv({ cls: 'tree-item nav-folder' });
+    // Initial collapsed state based on expandedSet
+    if (!expandedSet.has(currentPathString)) {
+      treeItem.addClass('is-collapsed');
+    }
     
     const titleDiv = treeItem.createDiv({ cls: 'tree-item-self nav-folder-title is-clickable mod-collapsible' });
     titleDiv.setAttribute('data-path', currentPathString);
@@ -48,13 +82,26 @@ function renderTree(
       evt.preventDefault();
       onCategoryContextMenu(evt, currentPathString);
     });
-    titleDiv.addEventListener('mousedown', (evt) => {
-      if (evt.button !== 0) return; 
+    titleDiv.addEventListener('click', (evt) => {
+      if ((evt as MouseEvent).button !== 0) return;
       const isCurrentlyCollapsed = treeItem.hasClass('is-collapsed');
       treeItem.toggleClass('is-collapsed', !isCurrentlyCollapsed);
       collapseIcon.toggleClass('is-collapsed', !isCurrentlyCollapsed);
+
+      if (onToggleExpand) onToggleExpand(currentPathString, isCurrentlyCollapsed);
     });
-    renderTree(node[key], childrenContainer, depth + 1, currentPath, currentFile, onCategoryContextMenu, onFileContextMenu, app);
+    renderTree(
+      node[key],
+      childrenContainer,
+      depth + 1,
+      currentPath,
+      currentFile,
+      onCategoryContextMenu,
+      onFileContextMenu,
+      app,
+      expandedSet,
+      onToggleExpand
+    );
     if (node[key].files) {
       node[key].files.forEach((file: TFile) => {
         const fileItem = childrenContainer.createDiv({ cls: 'tree-item nav-file' });

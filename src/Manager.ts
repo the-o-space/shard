@@ -3,6 +3,7 @@ import { Parser } from './parser/Parser';
 import { Graph } from './Graph';
 import { Tree } from './Tree';
 import { Shards } from './data/types/Shard';
+// Removed external store; Manager emits updates to views
 
 /**
  * Central manager that coordinates parsing and data structure building
@@ -20,8 +21,6 @@ export class Manager {
         this.parser = new Parser(metadataCache);
         this.graph = new Graph();
         this.tree = new Tree();
-
-        console.log(this.vault);
     }
 
     /**
@@ -31,20 +30,14 @@ export class Manager {
         // Clear existing data
         this.graph.clear();
         this.tree.clear();
+        this.triggerUpdated();
         
         // Get all markdown files
         const files = this.vault.getMarkdownFiles();
-
-        console.log(files);
         
         for (const file of files) {
             await this.parseFile(file);
         }
-
-        console.log(this.graph.getAllRelations());
-        console.log(this.tree.getAllHierarchies());
-
-        this.triggerUpdated();
     }
 
     /**
@@ -56,8 +49,6 @@ export class Manager {
 
             const shards = this.parser.parse(file, content);
 
-            console.log(file.path, shards);
-            
             // Process each shard
             for (const [shardFile, shard] of shards) {
                 // Add relations to graph
@@ -104,7 +95,6 @@ export class Manager {
         
         // Parse and add new data
         await this.parseFile(file);
-        this.triggerUpdated();
     }
 
     /**
