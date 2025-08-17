@@ -1,0 +1,170 @@
+.tag-tree .tree-item {
+  position: relative;
+  margin-bottom: var(--size-2-1);
+}
+.tag-tree .nav-folder-title,
+.tag-tree .nav-file-title {
+  padding: var(--nav-item-padding);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  min-width: 100%;
+  line-height: var(--line-height-tight);
+  color: var(--nav-item-color);
+  font-size: var(--nav-item-size);
+  font-weight: var(--nav-item-weight);
+}
+.tag-tree .collapse-icon {
+  margin-right: 6px;
+  display: flex;
+  align-items: center;
+}
+.tag-tree .is-collapsed .right-triangle {
+  transform: rotate(-90deg);
+}
+.tag-tree .tree-item-children {
+  display: block;
+  padding-left: 0;
+}
+.tag-tree .is-collapsed .tree-item-children {
+  display: none;
+}
+
+/* Shard-specific styles */
+.shard-relation-node {
+    font-style: italic;
+    opacity: 0.9;
+}
+
+.shard-relation-file .tree-item-inner {
+    opacity: 0.8;
+    font-style: italic;
+}
+
+/* Style the relation symbols with different colors */
+.nav-folder-title-content:has-text("↔") {
+    color: var(--text-accent);
+}
+
+.nav-folder-title-content:has-text("↑") {
+    color: var(--text-success);
+}
+
+.nav-folder-title-content:has-text("↓") {
+    color: var(--text-warning);
+}
+
+.shard-view-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.shard-tree-section {
+    flex: 1;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.shard-relations-section {
+    flex-shrink: 0;
+    max-height: 40%;
+    overflow-y: auto;
+    padding-bottom: 8px;
+}
+
+.shard-section-header {
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    background-color: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* Relations view styles */
+.relations-content {
+    padding: 8px;
+}
+
+.relations-header {
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: 8px;
+}
+
+.relations-header h5 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.relations-section {
+    margin-bottom: 16px;
+}
+
+.relations-section h6 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.8;
+}
+
+.relations-list {
+    margin-left: 8px;
+}
+
+.relation-parents h6 {
+    color: var(--text-success);
+}
+
+.relation-related h6 {
+    color: var(--text-accent);
+}
+
+.relation-children h6 {
+    color: var(--text-warning);
+}
+
+.pane-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100px;
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 16px;
+}
+
+.shard-current-file {
+    background: var(--background-modifier-active-hover);
+    color: var(--text-accent);
+    font-weight: 600;
+    border-radius: 4px;
+}
+
+.uncategorized-section {
+    margin-top: 16px;
+    padding-top: 8px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.uncategorized-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-faint);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-left: 8px;
+}

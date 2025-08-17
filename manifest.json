@@ -1,0 +1,11 @@
+{
+	"id": "shard",
+	"name": "Shard",
+	"version": "0.1.0",
+	"minAppVersion": "0.15.0",
+	"description": "Organize files with flexible shard-based tagging using frontmatter.",
+	"author": "the-o-space",
+	"authorUrl": "https://github.com/the-o-space",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}
