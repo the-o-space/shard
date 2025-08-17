@@ -1,26 +1,25 @@
-import { TFile, App, setIcon } from 'obsidian';
-import { Relation, RelationType } from '../domain/Relation';
+import { TFile, App } from 'obsidian';
+import { Relation } from '../data/types/Relation';
 
 export function buildRelationsPanel(
   relations: {
-    asSource: Relation[];
-    asTarget: Relation[];
+    outgoing: Relation[];
+    incoming: Relation[];
   },
   currentFile: TFile | null,
   onFileClick: (file: TFile) => void,
   onFileContextMenu: (evt: MouseEvent, file: TFile) => void,
-  app: App
+  app: App,
+  vault = app.vault
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'relations-content';
   
-  // Add file header like in the original
   if (currentFile) {
     const headerEl = container.createDiv({ cls: 'relations-header' });
     headerEl.createEl('h5', { text: currentFile.basename });
   }
 
-  // Convert relations to the display format used by the original UI
   type DisplayEntry = {
     file: TFile;
     label?: string;
@@ -31,12 +30,14 @@ export function buildRelationsPanel(
   const children: DisplayEntry[] = [];
   const related: DisplayEntry[] = [];
 
-  // Process relations where current file is source
-  for (const relation of relations.asSource) {
+  for (const relation of relations.outgoing) {
+    const targetFile = vault.getFileByPath(relation.target.path);
+    if (!(targetFile instanceof TFile)) continue;
+    
     const entry: DisplayEntry = {
-      file: relation.identity.targetFile,
-      label: relation.sourceLabel?.value,
-      relationType: mapRelationType(relation.identity.type)
+      file: targetFile,
+      label: relation.label || undefined,
+      relationType: mapTypeToRelationType(relation.type)
     };
     
     switch (entry.relationType) {
@@ -52,38 +53,10 @@ export function buildRelationsPanel(
     }
   }
 
-  // Process relations where current file is target to find inverse relations
-  for (const relation of relations.asTarget) {
-    const inverseType = getInverseType(relation.identity.type);
-    const entry: DisplayEntry = {
-      file: relation.identity.sourceFile,
-      label: relation.targetLabel?.value,
-      relationType: inverseType
-    };
-    
-    // Only add if not already present (avoid duplicates from bidirectional sync)
-    const isDuplicate = (list: DisplayEntry[]) => 
-      list.some(e => e.file.path === entry.file.path && e.label === entry.label);
-    
-    switch (entry.relationType) {
-      case 'parent':
-        if (!isDuplicate(parents)) parents.push(entry);
-        break;
-      case 'child':
-        if (!isDuplicate(children)) children.push(entry);
-        break;
-      case 'related':
-        if (!isDuplicate(related)) related.push(entry);
-        break;
-    }
-  }
-
-  // Separate labeled and unlabeled entries
   const unlabeledParents = parents.filter(e => !e.label);
   const unlabeledChildren = children.filter(e => !e.label);
   const unlabeledRelated = related.filter(e => !e.label);
 
-  // Render unlabeled sections
   if (unlabeledParents.length > 0) {
     renderSection(container, 'Parents', unlabeledParents, 'relation-parents', currentFile, onFileClick, onFileContextMenu, app, 'parent');
   }
@@ -94,7 +67,6 @@ export function buildRelationsPanel(
     renderSection(container, 'Children', unlabeledChildren, 'relation-children', currentFile, onFileClick, onFileContextMenu, app, 'child');
   }
 
-  // Group labeled entries
   type LabelKey = string;
   const labeledGroups: Map<LabelKey, DisplayEntry[]> = new Map();
   
@@ -109,7 +81,6 @@ export function buildRelationsPanel(
   children.forEach(addToGroup);
   related.forEach(addToGroup);
 
-  // Render labeled groups
   labeledGroups.forEach((entries, key) => {
     const [label, relationType] = key.split('|') as [string, 'parent' | 'child' | 'related'];
     renderSection(
@@ -125,7 +96,6 @@ export function buildRelationsPanel(
     );
   });
 
-  // Show empty state if no relations
   if (
     unlabeledParents.length === 0 &&
     unlabeledChildren.length === 0 &&
@@ -176,7 +146,6 @@ function renderSection(
       if (evt.button !== 0) return;
       evt.preventDefault();
       evt.stopPropagation();
-      // Use Obsidian's API to open the file
       app.workspace.openLinkText(file.path, '');
     });
     
@@ -186,24 +155,15 @@ function renderSection(
   });
 }
 
-function mapRelationType(type: RelationType): 'parent' | 'child' | 'related' {
+function mapTypeToRelationType(type: string): 'parent' | 'child' | 'related' {
   switch (type) {
-    case RelationType.Parent:
+    case '>':
       return 'parent';
-    case RelationType.Child:
+    case '<':
       return 'child';
-    case RelationType.Related:
+    case '~':
       return 'related';
-  }
-}
-
-function getInverseType(type: RelationType): 'parent' | 'child' | 'related' {
-  switch (type) {
-    case RelationType.Parent:
-      return 'child';
-    case RelationType.Child:
-      return 'parent';
-    case RelationType.Related:
+    default:
       return 'related';
   }
 } 
