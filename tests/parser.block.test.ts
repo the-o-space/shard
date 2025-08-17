@@ -78,6 +78,26 @@ describe('Parser block-level', () => {
         expect(errorSpy).toHaveBeenCalled();
         errorSpy.mockRestore();
     });
+
+    it('expands _ inside braces as an empty option for hierarchies', () => {
+        const file = makeTFile('A.md');
+        const cache = makeMetadataCache({});
+        const parser = new Parser(cache);
+
+        const content = [
+            '```shards\n',
+            '{Favourite, _}/Article\n',
+            '```\n'
+        ].join('');
+
+        const shards = parser.parse(file, content);
+        const shard = shards.get(file)!;
+
+        const hierarchyPaths = shard.hierarchies.map(h => h.path.join('/'));
+        expect(hierarchyPaths).toContain('Article');
+        expect(hierarchyPaths).toContain('Favourite/Article');
+        expect(shard.hierarchies.length).toBe(2);
+    });
 });
 
 

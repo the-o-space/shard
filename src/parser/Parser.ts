@@ -23,6 +23,10 @@ export class Parser {
 
     /**
      * Parse all ```shards code blocks from the file content and return a `Shards` map.
+     * 
+     * @param file - The file to parse.
+     * @param content - The content of the file to parse.
+     * @returns A `Shards` map.
      */
     parse(file: TFile, content: string): Shards {
         const shards: Shards = new Map();
@@ -84,7 +88,6 @@ export class Parser {
                     }
                 }
             } catch (error) {
-                // Log and continue parsing other lines
                 console.error(`Shards: Error parsing line in ${sourceFile.path}: "${line}"`, error);
             }
         }
@@ -97,7 +100,6 @@ export class Parser {
     }
 
     private determineLineType(line: string): { type: LineType; value: RelationParseResult | string } {
-        // First try relation; if it fails, try hierarchy; if both fail -> malformed
         const relationParse = this.parser.relationLine.parse(line);
         if (relationParse.status) {
             return { type: LineType.Relation, value: relationParse.value as RelationParseResult };
@@ -143,7 +145,10 @@ export class Parser {
         if (!match) return [str];
         const prefix = str.slice(0, match.index);
         const suffix = str.slice((match.index ?? 0) + match[0].length);
-        const options = match[1].split(',').map(option => option.trim());
+        const options = match[1]
+            .split(',')
+            .map(option => option.trim())
+            .map(option => (option === '_' ? '' : option));
 
         const expandedSuffixes = this.expandBraces(suffix);
         const result: string[] = [];

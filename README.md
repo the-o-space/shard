@@ -58,6 +58,18 @@ This expands to:
 - Tech/Hardware/Desktop
 - Tech/Hardware/Mobile
 
+Use `_` inside `{}` to represent an empty option:
+
+```markdown
+```shards
+{Favourite, _}/Article
+```
+```
+
+This expands to:
+- Article
+- Favourite/Article
+
 ### Relationship Syntax
 
 Define relationships between notes using special prefixes:
