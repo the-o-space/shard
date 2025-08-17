@@ -157,13 +157,13 @@ function renderSection(
 
 function mapTypeToRelationType(type: string): 'parent' | 'child' | 'related' {
   switch (type) {
-    case '>':
+    case 'parent':
       return 'parent';
-    case '<':
+    case 'child':
       return 'child';
-    case '~':
+    case 'related':
       return 'related';
     default:
       return 'related';
   }
-} 
+}

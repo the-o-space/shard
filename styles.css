@@ -203,6 +203,29 @@
     height: 100%;
 }
 
+/* New stacked sections container */
+.shard-view-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.shard-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.shard-splitter {
+    height: 6px;
+    cursor: row-resize;
+    background: var(--background-modifier-border);
+}
+
+body.shard-resizing, body.shard-resizing * {
+    cursor: row-resize !important;
+}
+
 .shard-tabs {
     display: flex;
     border-bottom: 1px solid var(--background-modifier-border);

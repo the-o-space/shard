@@ -11,6 +11,7 @@ export class Manager {
     private parser: Parser;
     private graph: Graph;
     private tree: Tree;
+    private updatedListeners: Set<() => void> = new Set();
     
     constructor(
         private vault: Vault,
@@ -42,6 +43,8 @@ export class Manager {
 
         console.log(this.graph.getAllRelations());
         console.log(this.tree.getAllHierarchies());
+
+        this.triggerUpdated();
     }
 
     /**
@@ -67,6 +70,8 @@ export class Manager {
                     this.tree.addHierarchies(shardFile, shard.hierarchies);
                 }
             }
+
+            this.triggerUpdated();
         } catch (error) {
             console.error(`Error parsing file ${file.path}:`, error);
         }
@@ -78,6 +83,7 @@ export class Manager {
     removeFile(file: TFile): void {
         this.graph.removeAllRelationsForFile(file);
         this.tree.removeHierarchiesForFile(file);
+        this.triggerUpdated();
     }
 
     /**
@@ -86,6 +92,7 @@ export class Manager {
     renameFile(oldFile: TFile, newFile: TFile): void {
         this.graph.changeFile(oldFile, newFile);
         this.tree.changeFile(oldFile, newFile);
+        this.triggerUpdated();
     }
 
     /**
@@ -97,6 +104,7 @@ export class Manager {
         
         // Parse and add new data
         await this.parseFile(file);
+        this.triggerUpdated();
     }
 
     /**
@@ -136,4 +144,22 @@ export class Manager {
             filesWithHierarchies: this.tree.getAllFiles().length
         };
     }
+
+    public onUpdated(callback: () => void): () => void {
+        this.updatedListeners.add(callback);
+        return () => this.updatedListeners.delete(callback);
+    }
+
+    private triggerUpdated(): void {
+        for (const cb of this.updatedListeners) {
+            try {
+                cb();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    }
 }
+
+// Simple update subscription API
+export type ManagerUpdateUnsubscribe = () => void;

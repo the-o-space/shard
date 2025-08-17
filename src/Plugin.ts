@@ -1,7 +1,7 @@
 import { Plugin, TFile } from 'obsidian';
 import { Manager } from './Manager';
 import { Settings } from './data/types/Settings';
-import { ExampleShardView, VIEW_TYPE } from './views/ExampleShardView';
+import { ShardView, VIEW_TYPE } from './views/ShardView';
 
 export default class ShardPlugin extends Plugin {
 	settings: Settings;
@@ -15,7 +15,7 @@ export default class ShardPlugin extends Plugin {
 		// Register the view
 		this.registerView(
 			VIEW_TYPE,
-			(leaf) => new ExampleShardView(leaf, this.manager)
+			(leaf) => new ShardView(leaf, this.manager)
 		);
 		
 		this.app.workspace.onLayoutReady(async () => {
