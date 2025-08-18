@@ -108,7 +108,13 @@ describe('Inferrer Service', () => {
         const fileB = makeTFile('B.md');
         const initialFmB = { parent: '[[A.md]]' };
         app._setFrontmatter('B.md', initialFmB);
-        (parser as any).parse = () => new Map([[fileB, { relations: [{ source: fileB, target: fileA, type: 'parent' }] }]]);
+        vi.spyOn(parser, 'parse').mockReturnValue(new Map([
+            [fileB, {
+                file: fileB,
+                hierarchies: [],
+                relations: [{ source: fileB, target: fileA, type: 'parent', label: '', infer: false }]
+            }]
+        ]));
 
         const addedRelation: Relation = {
             source: fileA,
@@ -124,6 +130,26 @@ describe('Inferrer Service', () => {
         expect(fmB).toEqual(initialFmB);
     });
 
+    it('should not modify the source file when adding a relation', async () => {
+        const fileA = makeTFile('A.md');
+        const fileB = makeTFile('B.md');
+        app._setFrontmatter('A.md', { child: '[[B.md]]' });
+        app._setFrontmatter('B.md', {});
+
+        const addedRelation: Relation = {
+            source: fileA,
+            target: fileB,
+            type: 'child',
+            label: '',
+            infer: false,
+        };
+
+        const initialFmA = { ...app._getFrontmatter('A.md') };
+        await inferrer.processChanges(fileA, [addedRelation], []);
+        const finalFmA = app._getFrontmatter('A.md');
+        expect(finalFmA).toEqual(initialFmA);
+    });
+
     it('should not trigger an infinite loop', async () => {
         const fileA = makeTFile('A.md');
         const fileB = makeTFile('B.md');
@@ -131,13 +157,13 @@ describe('Inferrer Service', () => {
         app._setFrontmatter('B.md', {});
 
         const relationAtoB: Relation = { source: fileA, target: fileB, type: 'child', label: '', infer: false };
+        const relationBtoA: Relation = { source: fileB, target: fileA, type: 'parent', label: '', infer: false };
 
         // 1. User adds "child: [[B.md]]" to A.md
         await inferrer.processChanges(fileA, [relationAtoB], []);
         expect(app._getFrontmatter('B.md').parent).toBe('[[A.md]]');
 
         // 2. B reparses and reports "parent: [[A.md]]". This should not trigger adding back in A
-        const relationBtoA: Relation = { source: fileB, target: fileA, type: 'parent', label: '', infer: false };
         const originalFmA = { ...app._getFrontmatter('A.md') };
         await inferrer.processChanges(fileB, [relationBtoA], []);
 

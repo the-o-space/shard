@@ -1,6 +1,6 @@
 import { TFile, Vault, App } from 'obsidian';
 import { Relation } from 'src/data/types/Relation';
-import { relationTypeToSymbol, getInverseType } from 'src/data/enums/RelationType';
+import { getInverseType } from 'src/data/enums/RelationType';
 import { Parser } from '../parser/Parser';
 
 export class Inferrer {
@@ -13,6 +13,11 @@ export class Inferrer {
     ) { }
 
     async processChanges(_file: TFile, added: Relation[], removed: Relation[]): Promise<void> {
+        console.debug('[Shards][Inferrer] processChanges', {
+            file: _file.path,
+            added: added.map(r => ({ s: r.source.path, t: r.target.path, type: r.type })),
+            removed: removed.map(r => ({ s: r.source.path, t: r.target.path, type: r.type }))
+        });
         for (const relation of removed) {
             await this.removeInverseRelation(relation);
         }
@@ -29,60 +34,98 @@ export class Inferrer {
     }
 
     private async addInverseRelation(relation: Relation): Promise<void> {
+        // Skip self-relations to avoid a file linking to itself
+        if (relation.source.path === relation.target.path) {
+            console.debug('[Shards][Inferrer] Skipping self-relation', relation);
+            return;
+        }
+
         const operationKey = this.getCanonicalKey(relation);
         if (this.lastOperationCache.has(operationKey)) {
+            console.debug('[Shards][Inferrer] Skipping cached addInverseRelation', { operationKey });
             this.lastOperationCache.delete(operationKey);
             return;
         }
 
         const inverse = this.getInverseRelation(relation);
         const targetFile = relation.target;
+        console.debug('[Shards][Inferrer] addInverseRelation -> target', {
+            source: relation.source.path,
+            target: targetFile.path,
+            inverseType: inverse.type
+        });
+
+        // Check if inverse already exists (based on parsed cache)
         const shards = this.parser.parse(targetFile);
         const shard = shards.get(targetFile);
-
         const inverseExists = shard?.relations.some(r =>
             r.target.path === inverse.target.path && r.type === inverse.type
         );
-
         if (inverseExists) {
+            console.debug('[Shards][Inferrer] Inverse already exists, not adding', {
+                target: targetFile.path,
+                inverseTarget: inverse.target.path,
+                type: inverse.type
+            });
             return;
         }
 
+        // Log current frontmatter prior to change
+        const beforeFm = this.app.metadataCache.getCache(targetFile.path)?.frontmatter;
+        console.debug('[Shards][Inferrer] Frontmatter before add', { file: targetFile.path, frontmatter: beforeFm });
+
         await this.app.fileManager.processFrontMatter(targetFile, (frontmatter) => {
-            const key = inverse.type;
+            const key = inverse.type as string;
             const target = `[[${inverse.target.path}]]`;
 
-            if (frontmatter[key]) {
-                if (Array.isArray(frontmatter[key])) {
-                    frontmatter[key].push(target);
-                } else {
-                    frontmatter[key] = [frontmatter[key], target];
-                }
-            } else {
-                frontmatter[key] = target;
+            const ensureArray = (val: unknown): string[] => Array.isArray(val) ? val as string[] : (typeof val === 'string' && val.length > 0 ? [val] : []);
+
+            const currentValues = ensureArray(frontmatter[key]);
+            if (!currentValues.includes(target)) {
+                frontmatter[key] = [...currentValues, target];
             }
         });
 
         this.lastOperationCache.add(operationKey);
+
+        const afterFm = this.app.metadataCache.getCache(targetFile.path)?.frontmatter;
+        console.debug('[Shards][Inferrer] Frontmatter after add', { file: targetFile.path, frontmatter: afterFm });
     }
 
     private async removeInverseRelation(relation: Relation): Promise<void> {
+        // Skip self-relations
+        if (relation.source.path === relation.target.path) {
+            console.debug('[Shards][Inferrer] Skipping self-relation removal', relation);
+            return;
+        }
+
         const operationKey = this.getCanonicalKey(relation);
         if (this.lastOperationCache.has(operationKey)) {
+            console.debug('[Shards][Inferrer] Skipping cached removeInverseRelation', { operationKey });
             this.lastOperationCache.delete(operationKey);
             return;
         }
 
         const inverse = this.getInverseRelation(relation);
         const targetFile = relation.target;
+        console.debug('[Shards][Inferrer] removeInverseRelation -> target', {
+            source: relation.source.path,
+            target: targetFile.path,
+            inverseType: inverse.type
+        });
         
+        const beforeFm = this.app.metadataCache.getCache(targetFile.path)?.frontmatter;
+        console.debug('[Shards][Inferrer] Frontmatter before remove', { file: targetFile.path, frontmatter: beforeFm });
+
         await this.app.fileManager.processFrontMatter(targetFile, (frontmatter) => {
-            const key = inverse.type;
+            const key = inverse.type as string;
             const targetLink = `[[${inverse.target.path}]]`;
 
-            if (frontmatter[key] && Array.isArray(frontmatter[key])) {
-                frontmatter[key] = frontmatter[key].filter((item: string) => item !== targetLink);
-                if (frontmatter[key].length === 0) {
+            if (Array.isArray(frontmatter[key])) {
+                const next = (frontmatter[key] as string[]).filter((item: string) => item !== targetLink);
+                if (next.length > 0) {
+                    frontmatter[key] = next;
+                } else {
                     delete frontmatter[key];
                 }
             } else if (frontmatter[key] === targetLink) {
@@ -91,6 +134,9 @@ export class Inferrer {
         });
 
         this.lastOperationCache.add(operationKey);
+
+        const afterFm = this.app.metadataCache.getCache(targetFile.path)?.frontmatter;
+        console.debug('[Shards][Inferrer] Frontmatter after remove', { file: targetFile.path, frontmatter: afterFm });
     }
 
     private getInverseRelation(relation: Relation): Relation {
