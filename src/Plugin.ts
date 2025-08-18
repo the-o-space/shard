@@ -9,7 +9,7 @@ export default class ShardPlugin extends Plugin {
 	manager: Manager;
 
 	async onload() {
-		this.manager = new Manager(this.app.vault, this.app.metadataCache);
+		this.manager = new Manager(this.app, this.app.vault, this.app.metadataCache);
 
 		await this.setupSettings();
 		
