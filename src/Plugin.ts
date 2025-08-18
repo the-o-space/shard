@@ -24,7 +24,7 @@ export default class ShardPlugin extends Plugin {
 		});
 
 		this.registerEvent(
-			this.app.vault.on('modify', async (file) => {
+			this.app.metadataCache.on('changed', async (file) => {
 				if (file instanceof TFile && file.extension === 'md') {
 					await this.manager.reparseFile(file);
 				}
